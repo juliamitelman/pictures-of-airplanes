@@ -1,4 +1,4 @@
-const CACHE_NAME = 'picture-search-v1';
+const CACHE_NAME = 'picture-search-v2';
 const SHELL_FILES = [
   '/',
   '/css/style.css',
@@ -30,7 +30,21 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
-  // API requests: network first, fall back to cache
+  // Image proxy: network first, cache for offline viewing
+  if (url.pathname.startsWith('/api/image/')) {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+          return res;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Search API: network first, fall back to cache
   if (url.pathname.startsWith('/api/')) {
     e.respondWith(
       fetch(e.request)
@@ -58,15 +72,4 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
-
-  // External (pixabay images): network first, cache for offline
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        const clone = res.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-        return res;
-      })
-      .catch(() => caches.match(e.request))
-  );
 });
