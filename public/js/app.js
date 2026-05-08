@@ -75,6 +75,43 @@ searchForm.addEventListener('submit', (e) => {
   search(searchInput.value);
 });
 
+// Voice search
+const voiceBtn = document.getElementById('voice-btn');
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+if (SpeechRecognition) {
+  const recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+
+  voiceBtn.addEventListener('click', () => {
+    if (voiceBtn.classList.contains('listening')) {
+      recognition.stop();
+      return;
+    }
+    voiceBtn.classList.add('listening');
+    recognition.start();
+  });
+
+  recognition.addEventListener('result', (e) => {
+    const transcript = e.results[0][0].transcript;
+    searchInput.value = transcript;
+    voiceBtn.classList.remove('listening');
+    search(transcript);
+  });
+
+  recognition.addEventListener('end', () => {
+    voiceBtn.classList.remove('listening');
+  });
+
+  recognition.addEventListener('error', () => {
+    voiceBtn.classList.remove('listening');
+  });
+} else {
+  voiceBtn.style.display = 'none';
+}
+
 // Register service worker
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});

@@ -15,6 +15,62 @@ const rateLimit = new Map();
 const RATE_WINDOW = 1000; // 1 second
 const RATE_MAX = 3; // max requests per window
 
+// Common misspellings kids/parents might type
+const CORRECTIONS = {
+  airplan: 'airplane', arplane: 'airplane', ariplane: 'airplane', aerplane: 'airplane',
+  airplain: 'airplane', airplaen: 'airplane', aiplane: 'airplane',
+  dinasaur: 'dinosaur', dinosuar: 'dinosaur', dinasor: 'dinosaur', dinosar: 'dinosaur',
+  dinasour: 'dinosaur', dinsaur: 'dinosaur',
+  elefant: 'elephant', elphant: 'elephant', elephent: 'elephant', elefent: 'elephant',
+  jiraf: 'giraffe', giraf: 'giraffe', giraff: 'giraffe', jiraffe: 'giraffe',
+  firetruck: 'fire truck', fiertruck: 'fire truck', firtruck: 'fire truck',
+  policcar: 'police car', policecar: 'police car',
+  butterly: 'butterfly', buterfly: 'butterfly', butterfy: 'butterfly',
+  helecopter: 'helicopter', helicoptor: 'helicopter', helcopter: 'helicopter',
+  ambulence: 'ambulance', amblulance: 'ambulance',
+  motercycle: 'motorcycle', motorcicle: 'motorcycle', motocycle: 'motorcycle',
+  baloon: 'balloon', ballon: 'balloon', balon: 'balloon',
+  monky: 'monkey', monkee: 'monkey', munkey: 'monkey',
+  pengin: 'penguin', pengwin: 'penguin', pegnuin: 'penguin',
+  zeebra: 'zebra', zeba: 'zebra', zebrah: 'zebra',
+  trane: 'train', trian: 'train',
+  unicron: 'unicorn', unikorn: 'unicorn',
+  rianbow: 'rainbow', ranbow: 'rainbow', rainbo: 'rainbow',
+  crokodile: 'crocodile', crocadile: 'crocodile',
+  hipopotamus: 'hippopotamus',
+  rhinoseros: 'rhinoceros', rhinocerous: 'rhinoceros', rinoseros: 'rhinoceros',
+  dolfin: 'dolphin', dolhpin: 'dolphin', dophin: 'dolphin',
+  octapus: 'octopus', octpus: 'octopus', octopis: 'octopus',
+  squirel: 'squirrel', squirl: 'squirrel', squrrel: 'squirrel',
+  chetah: 'cheetah', cheeta: 'cheetah',
+  leppard: 'leopard', lepard: 'leopard', leoperd: 'leopard',
+  rabitt: 'rabbit', rabit: 'rabbit', rabbitt: 'rabbit',
+  tutel: 'turtle', turle: 'turtle', turtl: 'turtle',
+  catapillar: 'caterpillar', caterpiller: 'caterpillar', catapiller: 'caterpillar',
+  strawbery: 'strawberry', stawberry: 'strawberry',
+  brocoli: 'broccoli', broccolli: 'broccoli', brocolli: 'broccoli',
+  choclate: 'chocolate', choclet: 'chocolate', chocolat: 'chocolate',
+  sandwitch: 'sandwich', sandwhich: 'sandwich', sandwish: 'sandwich',
+  excavater: 'excavator', exavator: 'excavator', excvator: 'excavator',
+  dumptruck: 'dump truck', bulldoser: 'bulldozer',
+  tracter: 'tractor', tracktor: 'tractor',
+  rocketship: 'rocket ship', rocet: 'rocket', roket: 'rocket',
+  solder: 'soldier', solider: 'soldier',
+  pirat: 'pirate', pirite: 'pirate',
+  prinses: 'princess', princes: 'princess', princss: 'princess',
+  castel: 'castle', caslte: 'castle',
+  volceno: 'volcano', volkano: 'volcano', vulcano: 'volcano',
+  tornato: 'tornado', ternaido: 'tornado',
+  lighning: 'lightning', lightening: 'lightning', litning: 'lightning',
+};
+
+function correctQuery(query) {
+  const lower = query.toLowerCase();
+  if (CORRECTIONS[lower]) return CORRECTIONS[lower];
+  // Try correcting individual words in multi-word queries
+  return lower.split(/\s+/).map(w => CORRECTIONS[w] || w).join(' ');
+}
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Image proxy — avoids Pixabay hotlinking blocks
@@ -63,15 +119,18 @@ app.get('/api/search', async (req, res) => {
     return res.status(429).json({ error: 'Too many requests' });
   }
 
+  // Correct common misspellings
+  const corrected = correctQuery(query);
+
   // Check cache
-  const cacheKey = query.toLowerCase();
+  const cacheKey = corrected.toLowerCase();
   const cached = cache.get(cacheKey);
   if (cached && now - cached.timestamp < CACHE_TTL) {
     return res.json(cached.data);
   }
 
   try {
-    const url = `https://pixabay.com/api/?key=${encodeURIComponent(PIXABAY_KEY)}&q=${encodeURIComponent(query)}&image_type=photo&safesearch=true&per_page=30`;
+    const url = `https://pixabay.com/api/?key=${encodeURIComponent(PIXABAY_KEY)}&q=${encodeURIComponent(corrected)}&image_type=photo&safesearch=true&per_page=30`;
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Pixabay API error: ${response.status}`);

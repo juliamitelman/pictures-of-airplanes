@@ -51,7 +51,7 @@ header {
   background: #fff;
 }
 
-#search-btn {
+#voice-btn, #search-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -59,14 +59,37 @@ header {
   height: 52px;
   border: none;
   border-radius: 12px;
-  background: #4a9eff;
-  color: #fff;
   cursor: pointer;
   flex-shrink: 0;
 }
 
+#search-btn {
+  background: #4a9eff;
+  color: #fff;
+}
+
 #search-btn:active {
   background: #3588e8;
+}
+
+#voice-btn {
+  background: #f0f0f0;
+  color: #555;
+}
+
+#voice-btn:active {
+  background: #e0e0e0;
+}
+
+#voice-btn.listening {
+  background: #ff4a4a;
+  color: #fff;
+  animation: pulse 1s ease infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
 }
 
 /* Image grid */
