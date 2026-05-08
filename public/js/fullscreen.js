@@ -2,6 +2,8 @@
 (function () {
   const overlay = document.getElementById('fullscreen');
   const closeBtn = document.getElementById('close-btn');
+  const favBtn = document.getElementById('fav-btn');
+  const hideBtn = document.getElementById('hide-btn');
   const fsImage = document.getElementById('fs-image');
   const fsTags = document.getElementById('fs-tags');
 
@@ -14,11 +16,19 @@
   // Long press
   let longPressTimer = null;
 
+  function updateControlButtons() {
+    const img = state.images[state.selectedIndex];
+    if (!img) return;
+    favBtn.classList.toggle('active', prefs.isFavorite(img.id));
+    hideBtn.classList.remove('active');
+  }
+
   // Open fullscreen
   window.openFullscreen = function (index) {
     state.selectedIndex = index;
     state.isFullscreen = true;
     showCurrentImage();
+    updateControlButtons();
     overlay.classList.remove('hidden');
     fsTags.classList.add('hidden');
     history.pushState({ fullscreen: true }, '');
@@ -32,6 +42,7 @@
     overlay.classList.add('hidden');
     fsImage.src = '';
     fsTags.classList.add('hidden');
+    renderGrid();
   }
 
   // Show current image
@@ -42,6 +53,7 @@
     fsImage.alt = img.tags;
     fsImage.style.transform = '';
     fsImage.classList.remove('swiping');
+    updateControlButtons();
   }
 
   // Navigate
@@ -72,6 +84,35 @@
     });
   }
 
+  // Favorite button
+  favBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const img = state.images[state.selectedIndex];
+    if (!img) return;
+    const isFav = prefs.toggleFavorite(img.id, state.query, {
+      id: img.id, thumbnail: img.thumbnail, full: img.full, tags: img.tags
+    });
+    favBtn.classList.toggle('active', isFav);
+  });
+
+  // Hide button
+  hideBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const img = state.images[state.selectedIndex];
+    if (!img) return;
+    prefs.hideImage(img.id);
+    state.images.splice(state.selectedIndex, 1);
+    if (state.images.length === 0) {
+      history.back();
+      return;
+    }
+    if (state.selectedIndex >= state.images.length) {
+      state.selectedIndex = state.images.length - 1;
+    }
+    showCurrentImage();
+    preloadAdjacent();
+  });
+
   // Close button
   closeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -90,6 +131,8 @@
   // Touch events for swipe and long press
   overlay.addEventListener('touchstart', (e) => {
     if (e.target === closeBtn || closeBtn.contains(e.target)) return;
+    if (e.target === favBtn || favBtn.contains(e.target)) return;
+    if (e.target === hideBtn || hideBtn.contains(e.target)) return;
     const touch = e.touches[0];
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;

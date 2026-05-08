@@ -6,6 +6,65 @@ const state = {
   isFullscreen: false
 };
 
+// Preferences stored in localStorage
+// favorites: { [imageId]: { query, id, thumbnail, full, tags } }
+// hidden: [imageId, ...]
+const prefs = {
+  _favKey: 'pic_favorites',
+  _hideKey: 'pic_hidden',
+
+  getFavorites() {
+    try { return JSON.parse(localStorage.getItem(this._favKey)) || {}; } catch { return {}; }
+  },
+  getHidden() {
+    try { return JSON.parse(localStorage.getItem(this._hideKey)) || []; } catch { return []; }
+  },
+  saveFavorites(favs) {
+    localStorage.setItem(this._favKey, JSON.stringify(favs));
+  },
+  saveHidden(hidden) {
+    localStorage.setItem(this._hideKey, JSON.stringify(hidden));
+  },
+
+  isFavorite(id) {
+    return !!this.getFavorites()[id];
+  },
+  isHidden(id) {
+    return this.getHidden().includes(id);
+  },
+
+  toggleFavorite(id, query, imgData) {
+    const favs = this.getFavorites();
+    if (favs[id]) {
+      delete favs[id];
+    } else {
+      favs[id] = { query: query.toLowerCase(), ...imgData };
+    }
+    this.saveFavorites(favs);
+    return !!favs[id];
+  },
+
+  hideImage(id) {
+    const hidden = this.getHidden();
+    if (!hidden.includes(id)) {
+      hidden.push(id);
+      this.saveHidden(hidden);
+    }
+    // Also remove from favorites if it was there
+    const favs = this.getFavorites();
+    if (favs[id]) {
+      delete favs[id];
+      this.saveFavorites(favs);
+    }
+  },
+
+  getFavoritesForQuery(query) {
+    const favs = this.getFavorites();
+    const q = query.toLowerCase();
+    return Object.values(favs).filter(f => f.query === q);
+  }
+};
+
 // DOM elements
 const searchForm = document.getElementById('search-form');
 const searchInput = document.getElementById('search-input');
@@ -27,7 +86,17 @@ async function search(query) {
     const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
     if (!res.ok) throw new Error('Search failed');
     const images = await res.json();
-    state.images = images;
+
+    // Filter out hidden images
+    const hidden = prefs.getHidden();
+    const filtered = images.filter(img => !hidden.includes(img.id));
+
+    // Prepend favorites for this query (that aren't already in results)
+    const favImages = prefs.getFavoritesForQuery(query);
+    const resultIds = new Set(filtered.map(img => img.id));
+    const favToAdd = favImages.filter(f => !resultIds.has(f.id) && !hidden.includes(f.id));
+    state.images = [...favToAdd, ...filtered];
+
     renderGrid();
   } catch (err) {
     empty.textContent = 'Something went wrong. Try again!';

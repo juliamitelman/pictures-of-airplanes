@@ -173,6 +173,44 @@ main {
   display: none;
 }
 
+.fs-controls {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: 12px;
+  z-index: 110;
+  display: flex;
+  gap: 10px;
+}
+
+.fs-ctrl-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+}
+
+.fs-ctrl-btn:active {
+  background: rgba(255,255,255,0.35);
+}
+
+.fs-ctrl-btn.active svg {
+  fill: currentColor;
+}
+
+#fav-btn.active {
+  color: #ff4a6e;
+}
+
+#hide-btn.active {
+  color: #ff4a4a;
+}
+
 .close-btn {
   position: absolute;
   bottom: max(24px, env(safe-area-inset-bottom));
