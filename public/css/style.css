@@ -151,23 +151,26 @@ main {
 
 .close-btn {
   position: absolute;
-  top: max(12px, env(safe-area-inset-top));
-  right: 12px;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 110;
-  width: 48px;
-  height: 48px;
+  width: 72px;
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   border-radius: 50%;
-  background: rgba(0,0,0,0.5);
-  color: #fff;
+  background: rgba(255,255,255,0.95);
+  color: #333;
   cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
 }
 
 .close-btn:active {
-  background: rgba(0,0,0,0.8);
+  background: rgba(255,255,255,0.7);
+  transform: translateX(-50%) scale(0.95);
 }
 
 .fs-image-container {
@@ -194,7 +197,7 @@ main {
 /* Tags overlay on long press */
 .fs-tags {
   position: absolute;
-  bottom: max(40px, env(safe-area-inset-bottom));
+  top: max(40px, env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
   background: rgba(0,0,0,0.7);
