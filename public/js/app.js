@@ -87,7 +87,7 @@ if (SpeechRecognition) {
 
   voiceBtn.addEventListener('click', () => {
     if (voiceBtn.classList.contains('listening')) {
-      recognition.stop();
+      recognition.abort();
       return;
     }
     voiceBtn.classList.add('listening');
@@ -97,6 +97,7 @@ if (SpeechRecognition) {
   recognition.addEventListener('result', (e) => {
     const transcript = e.results[0][0].transcript;
     searchInput.value = transcript;
+    recognition.abort();
     voiceBtn.classList.remove('listening');
     search(transcript);
   });
@@ -106,6 +107,7 @@ if (SpeechRecognition) {
   });
 
   recognition.addEventListener('error', () => {
+    recognition.abort();
     voiceBtn.classList.remove('listening');
   });
 } else {
