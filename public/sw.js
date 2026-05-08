@@ -1,4 +1,4 @@
-const CACHE_NAME = 'picture-search-v2';
+const CACHE_NAME = 'picture-search-v3';
 const SHELL_FILES = [
   '/',
   '/css/style.css',
@@ -58,17 +58,16 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Static assets: cache first, fall back to network
+  // Static assets: network first, fall back to cache
   if (url.origin === location.origin) {
     e.respondWith(
-      caches.match(e.request).then(cached => {
-        if (cached) return cached;
-        return fetch(e.request).then(res => {
+      fetch(e.request)
+        .then(res => {
           const clone = res.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
           return res;
-        });
-      })
+        })
+        .catch(() => caches.match(e.request))
     );
     return;
   }
