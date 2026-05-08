@@ -35,6 +35,7 @@
 
   <main>
     <div id="grid" class="grid"></div>
+    <button type="button" id="more-btn" class="more-btn hidden">More pictures</button>
     <div id="empty" class="empty hidden">No pictures found. Try something else!</div>
     <div id="spinner" class="spinner hidden">
       <div class="spinner-dot"></div>
@@ -62,7 +63,9 @@
       </svg>
     </button>
     <div id="fs-image-container" class="fs-image-container">
+      <img id="fs-image-prev" class="fs-image fs-image-side fs-image-prev" src="" alt="">
       <img id="fs-image" class="fs-image" src="" alt="">
+      <img id="fs-image-next" class="fs-image fs-image-side fs-image-next" src="" alt="">
     </div>
     <div id="fs-tags" class="fs-tags hidden"></div>
   </div>

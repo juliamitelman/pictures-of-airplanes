@@ -5,13 +5,18 @@
   const favBtn = document.getElementById('fav-btn');
   const hideBtn = document.getElementById('hide-btn');
   const fsImage = document.getElementById('fs-image');
+  const fsImagePrev = document.getElementById('fs-image-prev');
+  const fsImageNext = document.getElementById('fs-image-next');
   const fsTags = document.getElementById('fs-tags');
 
   // Swipe tracking
   let touchStartX = 0;
   let touchStartY = 0;
   let touchCurrentX = 0;
-  let isSwiping = false;
+  let touchCurrentY = 0;
+  let swipeDir = null; // 'h' | 'v' | null
+  const HORIZ_COMMIT = 50;
+  const VERTICAL_DISMISS = 100;
 
   // Long press
   let longPressTimer = null;
@@ -30,6 +35,7 @@
     showCurrentImage();
     updateControlButtons();
     overlay.classList.remove('hidden');
+    overlay.style.opacity = '';
     fsTags.classList.add('hidden');
     history.pushState({ fullscreen: true }, '');
     preloadAdjacent();
@@ -40,9 +46,24 @@
     state.isFullscreen = false;
     state.selectedIndex = -1;
     overlay.classList.add('hidden');
+    overlay.classList.remove('dismissing');
+    overlay.style.opacity = '';
     fsImage.src = '';
+    fsImagePrev.src = '';
+    fsImageNext.src = '';
+    resetTransforms();
     fsTags.classList.add('hidden');
     renderGrid();
+  }
+
+  function setSideSrc(el, img) {
+    if (img) {
+      el.src = img.full;
+      el.alt = img.tags;
+    } else {
+      el.src = '';
+      el.alt = '';
+    }
   }
 
   // Show current image
@@ -51,9 +72,40 @@
     if (!img) return;
     fsImage.src = img.full;
     fsImage.alt = img.tags;
-    fsImage.style.transform = '';
-    fsImage.classList.remove('swiping');
+    setSideSrc(fsImagePrev, state.images[state.selectedIndex - 1]);
+    setSideSrc(fsImageNext, state.images[state.selectedIndex + 1]);
+    resetTransforms();
     updateControlButtons();
+  }
+
+  function resetTransforms() {
+    fsImage.classList.remove('swiping');
+    fsImagePrev.classList.remove('swiping');
+    fsImageNext.classList.remove('swiping');
+    fsImage.style.transform = '';
+    fsImagePrev.style.transform = '';
+    fsImageNext.style.transform = '';
+    overlay.style.opacity = '';
+  }
+
+  function applyHorizontalSwipe(dx) {
+    // Resist swipes past the start/end where there's no neighbor to reveal
+    const atFirst = state.selectedIndex === 0;
+    const atLast = state.selectedIndex === state.images.length - 1;
+    if (atFirst && dx > 0) dx = dx * 0.3;
+    if (atLast && dx < 0) dx = dx * 0.3;
+    fsImage.style.transform = `translate(calc(-50% + ${dx}px), -50%)`;
+    fsImagePrev.style.transform = `translate(calc(-50% - 100vw + ${dx}px), -50%)`;
+    fsImageNext.style.transform = `translate(calc(-50% + 100vw + ${dx}px), -50%)`;
+  }
+
+  function applyVerticalSwipe(dy) {
+    // Only respond to upward swipe (negative dy); clamp small downward to 0
+    const cleanDy = Math.min(0, dy);
+    fsImage.style.transform = `translate(-50%, calc(-50% + ${cleanDy}px))`;
+    // Fade overlay as the user swipes further up
+    const fade = Math.max(0.4, 1 - Math.abs(cleanDy) / 400);
+    overlay.style.opacity = String(fade);
   }
 
   // Navigate
@@ -62,6 +114,9 @@
       state.selectedIndex++;
       showCurrentImage();
       preloadAdjacent();
+    } else {
+      // No next — snap back
+      animateBackToCenter();
     }
   }
 
@@ -70,7 +125,19 @@
       state.selectedIndex--;
       showCurrentImage();
       preloadAdjacent();
+    } else {
+      animateBackToCenter();
     }
+  }
+
+  function animateBackToCenter() {
+    fsImage.classList.remove('swiping');
+    fsImagePrev.classList.remove('swiping');
+    fsImageNext.classList.remove('swiping');
+    fsImage.style.transform = '';
+    fsImagePrev.style.transform = '';
+    fsImageNext.style.transform = '';
+    overlay.style.opacity = '';
   }
 
   // Preload adjacent images
@@ -137,7 +204,8 @@
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;
     touchCurrentX = touch.clientX;
-    isSwiping = false;
+    touchCurrentY = touch.clientY;
+    swipeDir = null;
 
     // Start long press timer
     longPressTimer = setTimeout(() => {
@@ -149,8 +217,9 @@
     if (!state.isFullscreen) return;
     const touch = e.touches[0];
     touchCurrentX = touch.clientX;
+    touchCurrentY = touch.clientY;
     const deltaX = touchCurrentX - touchStartX;
-    const deltaY = touch.clientY - touchStartY;
+    const deltaY = touchCurrentY - touchStartY;
 
     // Cancel long press on any movement
     if (longPressTimer && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
@@ -158,11 +227,18 @@
       longPressTimer = null;
     }
 
-    // Track horizontal swipe
-    if (Math.abs(deltaX) > 20 && Math.abs(deltaX) > Math.abs(deltaY)) {
-      isSwiping = true;
+    // Lock swipe direction once movement is meaningful
+    if (!swipeDir && (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12)) {
+      swipeDir = Math.abs(deltaY) > Math.abs(deltaX) ? 'v' : 'h';
       fsImage.classList.add('swiping');
-      fsImage.style.transform = `translateX(${deltaX}px)`;
+      fsImagePrev.classList.add('swiping');
+      fsImageNext.classList.add('swiping');
+    }
+
+    if (swipeDir === 'h') {
+      applyHorizontalSwipe(deltaX);
+    } else if (swipeDir === 'v') {
+      applyVerticalSwipe(deltaY);
     }
   }, { passive: true });
 
@@ -170,29 +246,31 @@
     clearTimeout(longPressTimer);
     longPressTimer = null;
 
-    if (isSwiping) {
-      const deltaX = touchCurrentX - touchStartX;
-      if (Math.abs(deltaX) > 50) {
-        if (deltaX < 0) {
-          nextImage();
-        } else {
-          prevImage();
-        }
+    const deltaX = touchCurrentX - touchStartX;
+    const deltaY = touchCurrentY - touchStartY;
+
+    if (swipeDir === 'h') {
+      if (Math.abs(deltaX) > HORIZ_COMMIT) {
+        if (deltaX < 0) nextImage();
+        else prevImage();
       } else {
-        // Snap back
-        fsImage.classList.remove('swiping');
-        fsImage.style.transform = '';
+        animateBackToCenter();
       }
-      isSwiping = false;
+    } else if (swipeDir === 'v') {
+      if (deltaY < -VERTICAL_DISMISS) {
+        history.back();
+      } else {
+        animateBackToCenter();
+      }
     }
+    swipeDir = null;
   }, { passive: true });
 
   overlay.addEventListener('touchcancel', () => {
     clearTimeout(longPressTimer);
     longPressTimer = null;
-    isSwiping = false;
-    fsImage.classList.remove('swiping');
-    fsImage.style.transform = '';
+    swipeDir = null;
+    animateBackToCenter();
   }, { passive: true });
 
   // Show tags
@@ -220,6 +298,8 @@
       prevImage();
     } else if (e.key === 'ArrowRight') {
       nextImage();
+    } else if (e.key === 'ArrowUp') {
+      history.back();
     }
   });
 })();

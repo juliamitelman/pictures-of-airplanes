@@ -3,8 +3,19 @@ const state = {
   query: '',
   images: [],
   selectedIndex: -1,
-  isFullscreen: false
+  isFullscreen: false,
+  page: 1,
+  hasMore: true,
+  loadingMore: false
 };
+
+function shuffleArr(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
 
 // Preferences stored in localStorage
 // favorites: { [imageId]: { query, id, thumbnail, full, tags } }
@@ -71,6 +82,7 @@ const searchInput = document.getElementById('search-input');
 const grid = document.getElementById('grid');
 const empty = document.getElementById('empty');
 const spinner = document.getElementById('spinner');
+const moreBtn = document.getElementById('more-btn');
 
 // Search
 async function search(query) {
@@ -78,12 +90,15 @@ async function search(query) {
   if (!query) return;
 
   state.query = query;
+  state.page = 1;
+  state.hasMore = true;
   grid.innerHTML = '';
   empty.classList.add('hidden');
+  moreBtn.classList.add('hidden');
   spinner.classList.remove('hidden');
 
   try {
-    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&page=1`);
     if (!res.ok) throw new Error('Search failed');
     const images = await res.json();
 
@@ -91,12 +106,23 @@ async function search(query) {
     const hidden = prefs.getHidden();
     const filtered = images.filter(img => !hidden.includes(img.id));
 
-    // Prepend favorites for this query (that aren't already in results)
-    const favImages = prefs.getFavoritesForQuery(query);
-    const resultIds = new Set(filtered.map(img => img.id));
-    const favToAdd = favImages.filter(f => !resultIds.has(f.id) && !hidden.includes(f.id));
-    state.images = [...favToAdd, ...filtered];
+    // Split filtered into favorites and non-favorites
+    const favsInFiltered = [];
+    const nonFavs = [];
+    for (const img of filtered) {
+      if (prefs.isFavorite(img.id)) favsInFiltered.push(img);
+      else nonFavs.push(img);
+    }
 
+    // Add favorites for this query that aren't already in the results
+    const favImagesForQuery = prefs.getFavoritesForQuery(query);
+    const resultIds = new Set(filtered.map(img => img.id));
+    const favToAdd = favImagesForQuery.filter(f => !resultIds.has(f.id) && !hidden.includes(f.id));
+
+    // Favorites pinned first (in their natural order), then everything else shuffled
+    state.images = [...favToAdd, ...favsInFiltered, ...shuffleArr(nonFavs)];
+
+    if (filtered.length === 0) state.hasMore = false;
     renderGrid();
   } catch (err) {
     empty.textContent = 'Something went wrong. Try again!';
@@ -106,6 +132,39 @@ async function search(query) {
   }
 }
 
+async function loadMore() {
+  if (state.loadingMore || !state.hasMore || !state.query) return;
+  state.loadingMore = true;
+  moreBtn.disabled = true;
+  moreBtn.textContent = 'Loading…';
+
+  try {
+    state.page += 1;
+    const res = await fetch(`/api/search?q=${encodeURIComponent(state.query)}&page=${state.page}`);
+    if (!res.ok) throw new Error('Load more failed');
+    const images = await res.json();
+
+    const hidden = prefs.getHidden();
+    const existingIds = new Set(state.images.map(img => img.id));
+    const fresh = images.filter(img => !hidden.includes(img.id) && !existingIds.has(img.id));
+
+    if (fresh.length === 0) {
+      state.hasMore = false;
+    } else {
+      state.images.push(...shuffleArr(fresh));
+    }
+    renderGrid();
+  } catch (err) {
+    state.page -= 1;
+  } finally {
+    state.loadingMore = false;
+    moreBtn.disabled = false;
+    moreBtn.textContent = 'More pictures';
+  }
+}
+
+moreBtn.addEventListener('click', loadMore);
+
 // Render grid
 function renderGrid() {
   grid.innerHTML = '';
@@ -113,6 +172,7 @@ function renderGrid() {
   if (state.images.length === 0) {
     empty.textContent = 'No pictures found. Try something else!';
     empty.classList.remove('hidden');
+    moreBtn.classList.add('hidden');
     return;
   }
 
@@ -135,6 +195,8 @@ function renderGrid() {
     item.appendChild(imgEl);
     grid.appendChild(item);
   });
+
+  moreBtn.classList.toggle('hidden', !state.hasMore);
 }
 
 // Search form submit
