@@ -1,4 +1,4 @@
-const CACHE_NAME = 'picture-search-v4';
+const CACHE_NAME = 'picture-search-v5';
 const SHELL_FILES = [
   '/',
   '/css/style.css',

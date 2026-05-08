@@ -6,7 +6,8 @@ const state = {
   isFullscreen: false,
   page: 1,
   hasMore: true,
-  loadingMore: false
+  loadingMore: false,
+  gridDirty: false
 };
 
 function shuffleArr(arr) {

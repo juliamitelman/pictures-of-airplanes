@@ -300,6 +300,10 @@ main {
   transition: none;
 }
 
+.fullscreen.dismissing {
+  transition: opacity 0.2s ease;
+}
+
 .fullscreen.dismissing .fs-image {
   transition: transform 0.2s ease, opacity 0.2s ease;
 }

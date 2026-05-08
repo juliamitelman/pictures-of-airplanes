@@ -15,8 +15,11 @@
   let touchCurrentX = 0;
   let touchCurrentY = 0;
   let swipeDir = null; // 'h' | 'v' | null
+  let isAnimating = false;
   const HORIZ_COMMIT = 50;
   const VERTICAL_DISMISS = 100;
+  const SLIDE_MS = 250;
+  const DISMISS_MS = 220;
 
   // Long press
   let longPressTimer = null;
@@ -32,9 +35,11 @@
   window.openFullscreen = function (index) {
     state.selectedIndex = index;
     state.isFullscreen = true;
+    state.gridDirty = false;
     showCurrentImage();
     updateControlButtons();
     overlay.classList.remove('hidden');
+    overlay.classList.remove('dismissing');
     overlay.style.opacity = '';
     fsTags.classList.add('hidden');
     history.pushState({ fullscreen: true }, '');
@@ -43,17 +48,23 @@
 
   // Close fullscreen
   function closeFullscreen() {
+    const wasDirty = state.gridDirty;
     state.isFullscreen = false;
     state.selectedIndex = -1;
+    state.gridDirty = false;
     overlay.classList.add('hidden');
     overlay.classList.remove('dismissing');
     overlay.style.opacity = '';
     fsImage.src = '';
     fsImagePrev.src = '';
     fsImageNext.src = '';
-    resetTransforms();
+    snapTransforms();
     fsTags.classList.add('hidden');
-    renderGrid();
+    isAnimating = false;
+    // Only re-render the grid if its contents actually changed (e.g. an image
+    // was hidden); otherwise leave the existing DOM alone to avoid a flash of
+    // unstyled / reloading thumbnails.
+    if (wasDirty) renderGrid();
   }
 
   function setSideSrc(el, img) {
@@ -66,19 +77,42 @@
     }
   }
 
-  // Show current image
-  function showCurrentImage() {
+  // Show current image. If `instant` is true, snap transforms back to default
+  // without animating — used after a commit-slide so the new content doesn't
+  // appear to bounce back from the edge.
+  function showCurrentImage(instant) {
     const img = state.images[state.selectedIndex];
     if (!img) return;
     fsImage.src = img.full;
     fsImage.alt = img.tags;
     setSideSrc(fsImagePrev, state.images[state.selectedIndex - 1]);
     setSideSrc(fsImageNext, state.images[state.selectedIndex + 1]);
-    resetTransforms();
+    if (instant) {
+      snapTransforms();
+    } else {
+      animateTransformsToCenter();
+    }
     updateControlButtons();
   }
 
-  function resetTransforms() {
+  // Reset transforms with no animation (transition disabled).
+  function snapTransforms() {
+    fsImage.classList.add('swiping');
+    fsImagePrev.classList.add('swiping');
+    fsImageNext.classList.add('swiping');
+    fsImage.style.transform = '';
+    fsImagePrev.style.transform = '';
+    fsImageNext.style.transform = '';
+    overlay.style.opacity = '';
+    // Force reflow so the next class removal doesn't animate from old state.
+    void fsImage.offsetHeight;
+    fsImage.classList.remove('swiping');
+    fsImagePrev.classList.remove('swiping');
+    fsImageNext.classList.remove('swiping');
+  }
+
+  // Reset transforms with the default CSS transition active.
+  function animateTransformsToCenter() {
     fsImage.classList.remove('swiping');
     fsImagePrev.classList.remove('swiping');
     fsImageNext.classList.remove('swiping');
@@ -88,35 +122,69 @@
     overlay.style.opacity = '';
   }
 
-  function applyHorizontalSwipe(dx) {
-    // Resist swipes past the start/end where there's no neighbor to reveal
-    const atFirst = state.selectedIndex === 0;
-    const atLast = state.selectedIndex === state.images.length - 1;
-    if (atFirst && dx > 0) dx = dx * 0.3;
-    if (atLast && dx < 0) dx = dx * 0.3;
+  function setHorizontalTransform(dx) {
     fsImage.style.transform = `translate(calc(-50% + ${dx}px), -50%)`;
     fsImagePrev.style.transform = `translate(calc(-50% - 100vw + ${dx}px), -50%)`;
     fsImageNext.style.transform = `translate(calc(-50% + 100vw + ${dx}px), -50%)`;
   }
 
+  function applyHorizontalSwipe(dx) {
+    // Resist swipes past the start/end where there's no neighbor to reveal.
+    const atFirst = state.selectedIndex === 0;
+    const atLast = state.selectedIndex === state.images.length - 1;
+    if (atFirst && dx > 0) dx = dx * 0.3;
+    if (atLast && dx < 0) dx = dx * 0.3;
+    setHorizontalTransform(dx);
+  }
+
   function applyVerticalSwipe(dy) {
-    // Only respond to upward swipe (negative dy); clamp small downward to 0
     const cleanDy = Math.min(0, dy);
     fsImage.style.transform = `translate(-50%, calc(-50% + ${cleanDy}px))`;
-    // Fade overlay as the user swipes further up
     const fade = Math.max(0.4, 1 - Math.abs(cleanDy) / 400);
     overlay.style.opacity = String(fade);
   }
 
-  // Navigate
+  // Slide the rest of the way to a neighbor, then update content in place.
+  function commitHorizontalSwipe(direction) {
+    isAnimating = true;
+    fsImage.classList.remove('swiping');
+    fsImagePrev.classList.remove('swiping');
+    fsImageNext.classList.remove('swiping');
+    const targetDx = direction === 1 ? -window.innerWidth : window.innerWidth;
+    setHorizontalTransform(targetDx);
+    setTimeout(() => {
+      state.selectedIndex += direction;
+      showCurrentImage(true);
+      preloadAdjacent();
+      isAnimating = false;
+    }, SLIDE_MS);
+  }
+
+  // Continue an upward swipe off-screen and fade the overlay before closing.
+  function commitDismissUp() {
+    isAnimating = true;
+    fsImage.classList.remove('swiping');
+    fsImagePrev.classList.remove('swiping');
+    fsImageNext.classList.remove('swiping');
+    fsImage.style.transform = `translate(-50%, calc(-50% - 100vh))`;
+    overlay.classList.add('dismissing');
+    void overlay.offsetHeight; // ensure transition is registered before opacity flips
+    overlay.style.opacity = '0';
+    setTimeout(() => {
+      history.back();
+    }, DISMISS_MS);
+  }
+
+  // Snap back to center when a swipe doesn't pass the threshold.
+  function snapBackToCenter() {
+    animateTransformsToCenter();
+  }
+
   function nextImage() {
     if (state.selectedIndex < state.images.length - 1) {
       state.selectedIndex++;
       showCurrentImage();
       preloadAdjacent();
-    } else {
-      // No next — snap back
-      animateBackToCenter();
     }
   }
 
@@ -125,22 +193,9 @@
       state.selectedIndex--;
       showCurrentImage();
       preloadAdjacent();
-    } else {
-      animateBackToCenter();
     }
   }
 
-  function animateBackToCenter() {
-    fsImage.classList.remove('swiping');
-    fsImagePrev.classList.remove('swiping');
-    fsImageNext.classList.remove('swiping');
-    fsImage.style.transform = '';
-    fsImagePrev.style.transform = '';
-    fsImageNext.style.transform = '';
-    overlay.style.opacity = '';
-  }
-
-  // Preload adjacent images
   function preloadAdjacent() {
     const idx = state.selectedIndex;
     [idx - 1, idx + 1].forEach(i => {
@@ -169,6 +224,7 @@
     if (!img) return;
     prefs.hideImage(img.id);
     state.images.splice(state.selectedIndex, 1);
+    state.gridDirty = true;
     if (state.images.length === 0) {
       history.back();
       return;
@@ -176,27 +232,22 @@
     if (state.selectedIndex >= state.images.length) {
       state.selectedIndex = state.images.length - 1;
     }
-    showCurrentImage();
+    showCurrentImage(true);
     preloadAdjacent();
   });
 
-  // Close button
   closeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (state.isFullscreen) {
-      history.back();
-    }
+    if (state.isFullscreen) history.back();
   });
 
-  // Back button support
   window.addEventListener('popstate', () => {
-    if (state.isFullscreen) {
-      closeFullscreen();
-    }
+    if (state.isFullscreen) closeFullscreen();
   });
 
   // Touch events for swipe and long press
   overlay.addEventListener('touchstart', (e) => {
+    if (isAnimating) return;
     if (e.target === closeBtn || closeBtn.contains(e.target)) return;
     if (e.target === favBtn || favBtn.contains(e.target)) return;
     if (e.target === hideBtn || hideBtn.contains(e.target)) return;
@@ -207,27 +258,24 @@
     touchCurrentY = touch.clientY;
     swipeDir = null;
 
-    // Start long press timer
     longPressTimer = setTimeout(() => {
       showTags();
     }, 500);
   }, { passive: true });
 
   overlay.addEventListener('touchmove', (e) => {
-    if (!state.isFullscreen) return;
+    if (!state.isFullscreen || isAnimating) return;
     const touch = e.touches[0];
     touchCurrentX = touch.clientX;
     touchCurrentY = touch.clientY;
     const deltaX = touchCurrentX - touchStartX;
     const deltaY = touchCurrentY - touchStartY;
 
-    // Cancel long press on any movement
     if (longPressTimer && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
       clearTimeout(longPressTimer);
       longPressTimer = null;
     }
 
-    // Lock swipe direction once movement is meaningful
     if (!swipeDir && (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12)) {
       swipeDir = Math.abs(deltaY) > Math.abs(deltaX) ? 'v' : 'h';
       fsImage.classList.add('swiping');
@@ -245,22 +293,26 @@
   overlay.addEventListener('touchend', () => {
     clearTimeout(longPressTimer);
     longPressTimer = null;
+    if (isAnimating) return;
 
     const deltaX = touchCurrentX - touchStartX;
     const deltaY = touchCurrentY - touchStartY;
 
     if (swipeDir === 'h') {
-      if (Math.abs(deltaX) > HORIZ_COMMIT) {
-        if (deltaX < 0) nextImage();
-        else prevImage();
+      const direction = deltaX < 0 ? 1 : -1;
+      const atFirst = state.selectedIndex === 0;
+      const atLast = state.selectedIndex === state.images.length - 1;
+      const blocked = (direction === 1 && atLast) || (direction === -1 && atFirst);
+      if (Math.abs(deltaX) > HORIZ_COMMIT && !blocked) {
+        commitHorizontalSwipe(direction);
       } else {
-        animateBackToCenter();
+        snapBackToCenter();
       }
     } else if (swipeDir === 'v') {
       if (deltaY < -VERTICAL_DISMISS) {
-        history.back();
+        commitDismissUp();
       } else {
-        animateBackToCenter();
+        snapBackToCenter();
       }
     }
     swipeDir = null;
@@ -270,26 +322,22 @@
     clearTimeout(longPressTimer);
     longPressTimer = null;
     swipeDir = null;
-    animateBackToCenter();
+    if (!isAnimating) snapBackToCenter();
   }, { passive: true });
 
-  // Show tags
   function showTags() {
     const img = state.images[state.selectedIndex];
     if (!img) return;
     fsTags.textContent = img.tags;
     fsTags.classList.remove('hidden');
-    // Re-trigger animation
     fsTags.style.animation = 'none';
-    fsTags.offsetHeight; // force reflow
+    fsTags.offsetHeight;
     fsTags.style.animation = '';
-
     setTimeout(() => {
       fsTags.classList.add('hidden');
     }, 2500);
   }
 
-  // Keyboard support (for desktop testing)
   document.addEventListener('keydown', (e) => {
     if (!state.isFullscreen) return;
     if (e.key === 'Escape') {
